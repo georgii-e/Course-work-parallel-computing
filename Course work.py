@@ -1,6 +1,8 @@
+import math
 import multiprocessing
-import random
 import time
+
+import numpy as np
 
 
 def is_sorted(arr):
@@ -17,33 +19,40 @@ def is_sorted(arr):
     """
     n = len(arr)
     for i in range(1, n):
-        if arr[i] < arr[i - 1]:
-            return False
+        try:
+            if arr[i] < arr[i - 1]:
+                return False
+        except TypeError:
+            if isinstance(arr[i], float) and isinstance(arr[i - 1], str):
+                return False
     return True
 
 
-def check_input(min, max, processes):
+def check_input(min, max, processes, chunks):
     """
     Validates user input for the parallel bubble sort function.
 
     Parameters
     ----------
-    min (int): Minimum value in the list to be sorted (must be non-negative).
-    max (int): Maximum value in the list to be sorted.
-    processes (int): Number of processes to use for parallel sorting (must be at least 1).
+    min (float): Minimum value in the list to be sorted (must be non-negative).
+    max (float): Maximum value in the list to be sorted.
+    processes (int): Number of processes to use for sorting (must be at least 1).
+    chunks (int): Number of chunks to use for sorting (must be at least 1).
 
     Returns
     -------
     bool: True if all inputs are valid, False otherwise.
     """
-    if min < 0:
-        print("Minimum element should be 0 or greater")
-        return False
     if processes < 1:
         print("Number of processes should be greater than zero")
         return False
-    if max < processes:
-        print("Warning: For better performance, the number of processes should be less than the maximum element")
+    if chunks < 1:
+        print("Number of chunks should be greater than zero")
+        return False
+    if abs(max - min) < chunks:
+        print("Warning: For better performance, the number of chunks should be less than range of elements")
+    if chunks < processes:
+        print("Warning: For better performance, the number of processes should be less than number of chunks")
     return True
 
 
@@ -84,11 +93,20 @@ def divide_chunks(arr, amount_chunks):
     -------
     chunks: A list of sublists representing the chunks.
     """
-    biggest_item = max(arr)
-    split_factor = biggest_item // amount_chunks
-    chunks = [[element for element in arr if split_factor * i <= element < split_factor * (i + 1)]
+    strings = []
+    if any(isinstance(element, str) for element in arr):
+        strings = [arr.pop(i) for i in reversed(range(len(arr))) if isinstance(arr[i], str)]
+    # We use ceil and floor to make range wider; also because random.uniform will never generate elements on the range boundaries
+    biggest_item = math.ceil(max(arr))
+    smallest_item = math.floor(min(arr))
+    split_factor = (biggest_item - smallest_item) // amount_chunks
+    chunks = [[element for element in arr if
+               smallest_item + split_factor * i <= element < smallest_item + split_factor * (i + 1)]
               for i in range(amount_chunks)]
-    chunks[-1].extend([element for element in arr if element >= split_factor * amount_chunks])
+    # Append elements greater than or equal to the last split factor to the last chunk
+    chunks[-1].extend([element for element in arr if element >= smallest_item + split_factor * amount_chunks])
+    if strings:
+        chunks.append(strings)
     return chunks
 
 
@@ -130,35 +148,49 @@ def sequential_bubble_sort(arr, processes):
     for chunk in chunks:
         bubblesort(chunk)
     sorted_arr = sum(chunks, [])
-
     return sorted_arr
 
 
+def sort_test_list():
+    test_lst = [10, 5.5, 'car', 'banana', 3.7, 'cherry', 'plane', 6.2, 'desk', 2.3]
+    print("Test array:", test_lst)
+    sorted_lst = parallel_bubble_sort(test_lst.copy(), 2, 2)
+    print("Array is not sorted!") if not is_sorted(sorted_lst) else None
+    print("Parallel bubble sort, resulting list: ", sorted_lst)
+    sorted_lst = sequential_bubble_sort(test_lst, 2)
+    print("Array is not sorted!") if not is_sorted(sorted_lst) else None
+    print("Sequential bubble sort, resulting list: ", sorted_lst)
+
+
 if __name__ == "__main__":
+    num_processes = 9
+    num_chunks = 500
+    max_elem = 500
+    min_elem = -500
+    num_elements = 50000
     lst_num_processes = [4, 9, 16, 25]
     lst_num_chunks = [50, 100, 150, 200, 250, 500]
-    num_elements = 100000
-    max_elem = 1000
-    min_elem = 0
+    # sort_test_list()
     for num_processes in lst_num_processes:
         for num_chunks in lst_num_chunks:
-            for _ in range(10):
-                if check_input(min_elem, max_elem, num_processes):
-                    print(f"Sorting parameters: random values range - [{min_elem};{max_elem}], "
-                          f"array length - {num_elements}, number of processes - {num_processes}, amount of chunks - {num_chunks}")
+            for _ in range(30):
+                if check_input(min_elem, max_elem, num_processes, num_chunks):
+                    lst = np.random.uniform(min_elem, max_elem, num_elements)
+                    print(
+                        f"Sorting parameters: random values range - [{min_elem}; {max_elem}], array length - {num_elements}, "
+                        f"number of processes - {num_processes}, amount of chunks - {num_chunks}")
 
-                    lst = [(random.randint(min_elem, max_elem)) for i in range(num_elements)]
                     start_time = time.time()
-                    lst = parallel_bubble_sort(lst, num_processes if num_processes <= 60 else 60, num_chunks)  # Windows limitation
+                    sorted_lst = parallel_bubble_sort(lst.copy(), num_processes if num_processes <= 60 else 60,
+                                                      num_chunks)  # Windows limitation
                     end_time = time.time() - start_time
                     print(f"--- Sorted in {end_time:.3f} seconds with parallel algorithm ---")
-                    print("Array is not sorted!") if not is_sorted(lst) else None
+                    print("Array is not sorted!") if not is_sorted(sorted_lst) else None
 
-                    lst = [(random.randint(min_elem, max_elem)) for i in range(num_elements)]
                     start_time = time.time()
-                    lst = sequential_bubble_sort(lst, num_chunks)
+                    sorted_lst = sequential_bubble_sort(lst.copy(), num_chunks)
                     end_time = time.time() - start_time
                     print(f"--- Sorted in {end_time:.3f} with sequential algorithm ---")
-                    print("Array is not sorted!") if not is_sorted(lst) else None
+                    print("Array is not sorted!") if not is_sorted(sorted_lst) else None
                 else:
                     print("Please check input")
